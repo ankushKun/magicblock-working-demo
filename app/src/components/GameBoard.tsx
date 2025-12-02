@@ -6,7 +6,7 @@ import { getProgram, getPlayerPda, getBoardPda, getConnection, ER_ENDPOINT, ER_W
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
-import { ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Key, ShieldOff, Zap, ZapOff } from "lucide-react";
+import { ArrowUp, ArrowDown, ArrowLeft, ArrowRight, ChevronsUp, ChevronsDown, ChevronsLeft, ChevronsRight, Key, ShieldOff, Zap, ZapOff } from "lucide-react";
 import { useSessionKey } from "@/hooks/useSessionKey";
 import { SessionKeySetupDialog } from "@/components/SessionKeySetupDialog";
 
@@ -863,73 +863,82 @@ export function GameBoard() {
           {/* Movement Controls */}
           <div className="space-y-4">
             <p className="text-sm font-medium text-center">Movement Controls</p>
-            <div className="flex flex-col items-center gap-2">
-              <Button
-                onClick={() => movePlayer(0, -1)}
-                disabled={loading || player.y === 0}
-                size="icon"
-                variant="outline"
-              >
-                <ArrowUp className="h-4 w-4" />
-              </Button>
-              <div className="flex gap-2">
-                <Button
-                  onClick={() => movePlayer(-1, 0)}
-                  disabled={loading || player.x === 0}
-                  size="icon"
-                  variant="outline"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                </Button>
-                <Button
-                  onClick={() => movePlayer(1, 0)}
-                  disabled={loading || player.x === BOARD_SIZE - 1}
-                  size="icon"
-                  variant="outline"
-                >
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
+            <div className="flex gap-8 items-center justify-center">
+              {/* Single step movements */}
+              <div className="flex flex-col items-center gap-2">
+                <div className="flex justify-center">
+                  <Button
+                    onClick={() => movePlayer(0, -1)}
+                    disabled={player.y === 0}
+                    size="icon"
+                    variant="outline"
+                  >
+                    <ArrowUp className="h-4 w-4" />
+                  </Button>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => movePlayer(-1, 0)}
+                    disabled={player.x === 0}
+                    size="icon"
+                    variant="outline"
+                  >
+                    <ArrowLeft className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    onClick={() => movePlayer(0, 1)}
+                    disabled={player.y === BOARD_SIZE - 1}
+                    size="icon"
+                    variant="outline"
+                  >
+                    <ArrowDown className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    onClick={() => movePlayer(1, 0)}
+                    disabled={player.x === BOARD_SIZE - 1}
+                    size="icon"
+                    variant="outline"
+                  >
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
-              <Button
-                onClick={() => movePlayer(0, 1)}
-                disabled={loading || player.y === BOARD_SIZE - 1}
-                size="icon"
-                variant="outline"
-              >
-                <ArrowDown className="h-4 w-4" />
-              </Button>
-            </div>
 
-            {/* Large Movement Buttons */}
-            <div className="grid grid-cols-2 gap-2 pt-4">
-              <Button
-                onClick={() => movePlayer(-10, 0)}
-                disabled={loading}
-                variant="secondary"
-              >
-                Move Left 10
-              </Button>
-              <Button
-                onClick={() => movePlayer(10, 0)}
-                disabled={loading}
-                variant="secondary"
-              >
-                Move Right 10
-              </Button>
-              <Button
-                onClick={() => movePlayer(0, -10)}
-                disabled={loading}
-                variant="secondary"
-              >
-                Move Up 10
-              </Button>
-              <Button
-                onClick={() => movePlayer(0, 10)}
-                disabled={loading}
-                variant="secondary"
-              >
-                Move Down 10
-              </Button>
+              {/* 10 step movements */}
+              <div className="flex flex-col items-center gap-2">
+                <div className="flex justify-center">
+                  <Button
+                    onClick={() => movePlayer(0, -10)}
+                    size="icon"
+                    variant="secondary"
+                  >
+                    <ChevronsUp className="h-4 w-4" />
+                  </Button>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => movePlayer(-10, 0)}
+                    size="icon"
+                    variant="secondary"
+                  >
+                    <ChevronsLeft className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    onClick={() => movePlayer(0, 10)}
+                    size="icon"
+                    variant="secondary"
+                  >
+                    <ChevronsDown className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    onClick={() => movePlayer(10, 0)}
+                    size="icon"
+                    variant="secondary"
+                  >
+                    <ChevronsRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
             </div>
           </div>
 
