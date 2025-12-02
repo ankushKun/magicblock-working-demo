@@ -729,24 +729,55 @@ export function GameBoard() {
           )}
 
           {player.isDelegated && isRegistered && (
-            <div className="p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
+            <div className={`p-4 border rounded-lg ${sessionWallet ? 'bg-green-500/10 border-green-500/20' : 'bg-yellow-500/10 border-yellow-500/20'}`}>
               <div className="flex items-start gap-3">
-                <Key className="h-5 w-5 text-green-500 mt-0.5" />
+                <Key className={`h-5 w-5 mt-0.5 ${sessionWallet ? 'text-green-500' : 'text-yellow-500'}`} />
                 <div className="flex-1">
-                  <p className="text-sm font-medium text-green-500">Session Key Active</p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Transactions will be auto-approved without wallet prompts. Session key will be cleared when you undelegate.
-                  </p>
-                  <Button
-                    onClick={revokeSessionKey}
-                    disabled={sessionLoading}
-                    size="sm"
-                    className="mt-3"
-                    variant="outline"
-                  >
-                    <ShieldOff className="h-3 w-3 mr-2" />
-                    {sessionLoading ? "Revoking..." : "Revoke Session Key"}
-                  </Button>
+                  {sessionWallet ? (
+                    <>
+                      <p className="text-sm font-medium text-green-500">Session Key Active</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Transactions will be auto-approved without wallet prompts. Session key will be cleared when you undelegate.
+                      </p>
+                      <Button
+                        onClick={revokeSessionKey}
+                        disabled={sessionLoading}
+                        size="sm"
+                        className="mt-3"
+                        variant="outline"
+                      >
+                        <ShieldOff className="h-3 w-3 mr-2" />
+                        {sessionLoading ? "Revoking..." : "Revoke Session Key"}
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm font-medium text-yellow-500">Session Key Registered - Activate Now</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Your session key is registered on-chain but not active in this browser. Click below to derive and activate it.
+                      </p>
+                      <Button
+                        onClick={async () => {
+                          if (!wallet || !publicKey) return;
+                          try {
+                            const key = await createSessionKey();
+                            if (key) {
+                              toast.success("Session key activated!", {
+                                description: "You can now move without wallet approvals",
+                              });
+                            }
+                          } catch (error) {
+                            console.error("Error activating session key:", error);
+                          }
+                        }}
+                        disabled={sessionLoading}
+                        size="sm"
+                        className="mt-3 bg-yellow-500 hover:bg-yellow-600 text-black"
+                      >
+                        {sessionLoading ? "Activating..." : "Activate Session Key"}
+                      </Button>
+                    </>
+                  )}
                 </div>
               </div>
             </div>

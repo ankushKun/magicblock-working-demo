@@ -91,7 +91,12 @@ export function useSessionKey() {
       const correctProgram = getProgram(correctProvider);
 
       const player = await (correctProgram.account as any).player.fetch(playerPda);
-      setIsRegistered(player.sessionKey !== null);
+      const hasRegisteredKey = player.sessionKey !== null;
+      setIsRegistered(hasRegisteredKey);
+
+      // Note: We don't automatically derive the session key here anymore
+      // User must click the "Activate Session Key" button to trigger derivation
+      // This prevents unwanted wallet popups
     } catch (error) {
       setIsRegistered(false);
       setIsDelegated(false);
