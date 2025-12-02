@@ -1,4 +1,7 @@
 use anchor_lang::prelude::*;
+use ephemeral_rollups_sdk::anchor::{commit, delegate, ephemeral};
+use ephemeral_rollups_sdk::cpi::DelegateConfig;
+use ephemeral_rollups_sdk::ephem::{commit_accounts, commit_and_undelegate_accounts};
 
 declare_id!("AqN6S5LJ4m1C5bQnr8996YFRu3jA1YnwaiG7eGEvD3oD");
 
@@ -6,6 +9,7 @@ const BOARD_SIZE: u8 = 100;
 const INITIAL_X: u8 = 10;
 const INITIAL_Y: u8 = 10;
 
+#[ephemeral]
 #[program]
 pub mod test_2 {
     use super::*;
@@ -79,6 +83,45 @@ pub mod test_2 {
         );
         Ok(())
     }
+
+    pub fn delegate_player(ctx: Context<DelegatePlayer>) -> Result<()> {
+        let authority = ctx.accounts.authority.key();
+        ctx.accounts.delegate_pda(
+            &ctx.accounts.payer,
+            &[b"player", authority.as_ref()],
+            DelegateConfig {
+                // Optional: specify ER validator from remaining accounts
+                validator: ctx.remaining_accounts.first().map(|acc| acc.key()),
+                ..Default::default()
+            },
+        )?;
+        msg!("Player {} delegated to Ephemeral Rollup", authority);
+        Ok(())
+    }
+
+    pub fn commit_player(ctx: Context<CommitPlayer>) -> Result<()> {
+        commit_accounts(
+            &ctx.accounts.payer,
+            vec![&ctx.accounts.player.to_account_info()],
+            &ctx.accounts.magic_context,
+            &ctx.accounts.magic_program,
+        )?;
+        msg!("Player state committed to base layer");
+        Ok(())
+    }
+
+    pub fn undelegate_player(ctx: Context<CommitPlayer>) -> Result<()> {
+        // Commit and undelegate the account
+        // Note: Session key will be cleared by the frontend after undelegation
+        commit_and_undelegate_accounts(
+            &ctx.accounts.payer,
+            vec![&ctx.accounts.player.to_account_info()],
+            &ctx.accounts.magic_context,
+            &ctx.accounts.magic_program,
+        )?;
+        msg!("Player undelegated from Ephemeral Rollup");
+        Ok(())
+    }
 }
 
 #[derive(Accounts)]
@@ -145,6 +188,26 @@ pub struct RevokeSessionKey<'info> {
     )]
     pub player: Account<'info, Player>,
     pub authority: Signer<'info>,
+}
+
+#[delegate]
+#[derive(Accounts)]
+pub struct DelegatePlayer<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    pub authority: Signer<'info>,
+    /// CHECK: Checked by delegate macro
+    #[account(mut, del)]
+    pub pda: AccountInfo<'info>,
+}
+
+#[commit]
+#[derive(Accounts)]
+pub struct CommitPlayer<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    #[account(mut)]
+    pub player: Account<'info, Player>,
 }
 
 #[account]

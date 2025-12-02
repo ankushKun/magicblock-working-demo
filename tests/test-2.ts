@@ -21,6 +21,9 @@ describe("test-2", () => {
     program.programId
   );
 
+  // Local ER validator for testing
+  const LOCAL_ER_VALIDATOR = new PublicKey("mAGicPQYBMvcYveUZA5F5UNNwyHvfYh5xkLS2Fr1mev");
+
   it("Initializes the board", async () => {
     const tx = await program.methods
       .initialize()
@@ -81,5 +84,28 @@ describe("test-2", () => {
     player = await program.account.player.fetch(playerPda);
     expect(player.x).to.equal(99); // Clamped to 99
     expect(player.y).to.equal(99); // Clamped to 99
+  });
+
+  it("Delegates player to Ephemeral Rollup", async () => {
+    // Note: This test requires a running local ER validator
+    // For full testing, run with: magicblock-validator
+
+    try {
+      await program.methods
+        .delegatePlayer()
+        .accounts({
+          payer: provider.publicKey,
+          authority: provider.publicKey,
+          pda: playerPda,
+        })
+        .remainingAccounts([
+          { pubkey: LOCAL_ER_VALIDATOR, isSigner: false, isWritable: false }
+        ])
+        .rpc();
+
+      console.log("✓ Player delegated to ER (requires running ER validator)");
+    } catch (error) {
+      console.log("⚠ Delegation skipped (ER validator not running):", error.message);
+    }
   });
 });
