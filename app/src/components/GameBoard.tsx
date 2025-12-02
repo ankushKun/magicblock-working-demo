@@ -262,74 +262,64 @@ export function GameBoard() {
   // Refresh all players periodically
   useEffect(() => {
     if (boardInitialized) {
-      const interval = setInterval(fetchAllPlayers, 5000); // Refresh every 5 seconds
+      // Use 100ms for Ephemeral Rollup (fast polling), 2000ms for base layer (slower polling)
+      const pollInterval = isDelegated ? 10 : 2000;
+      const interval = setInterval(fetchAllPlayers, pollInterval);
       return () => clearInterval(interval);
     }
-  }, [boardInitialized]);
+  }, [boardInitialized, isDelegated]);
 
   async function fetchAllPlayers() {
     if (!baseConnection.current || !erConnection.current) return;
 
     try {
-      const baseProvider = new AnchorProvider(baseConnection.current, {} as any, {});
-      const baseProgram = getProgram(baseProvider);
-      const erProvider = new AnchorProvider(erConnection.current, {} as any, {});
-      const erProgram = getProgram(erProvider);
-
-      // Fetch all player accounts from base layer
-      const basePlayers = await (baseProgram.account as any).player.all();
-
-      // Fetch all player accounts from ER
-      let erPlayers = [];
-      try {
-        erPlayers = await (erProgram.account as any).player.all();
-      } catch (e) {
-        console.log("Could not fetch ER players:", e);
-      }
-
       const playersMap = new Map<string, PlayerData>();
 
-      // Process base layer players
-      for (const playerAccount of basePlayers) {
-        const authority = playerAccount.account.authority.toString();
-        const playerPda = getPlayerPda(playerAccount.account.authority);
+      if (isDelegated) {
+        // When delegated, only fetch from ER (fast updates)
+        const erProvider = new AnchorProvider(erConnection.current, {} as any, {});
+        const erProgram = getProgram(erProvider);
 
-        // Check if delegated
-        const accountInfo = await baseConnection.current.getAccountInfo(playerPda);
-        const delegated = accountInfo?.owner.toString() !== baseProgram.programId.toString();
+        let erPlayers = [];
+        try {
+          erPlayers = await (erProgram.account as any).player.all();
+        } catch (e) {
+          console.log("Could not fetch ER players:", e);
+        }
 
-        playersMap.set(authority, {
-          x: playerAccount.account.x,
-          y: playerAccount.account.y,
-          authority,
-          sessionKey: playerAccount.account.sessionKey?.toString() || null,
-          isDelegated: delegated,
-        });
-      }
-
-      // Process ER players (override with ER position if delegated)
-      for (const erPlayerAccount of erPlayers) {
-        const authority = erPlayerAccount.account.authority.toString();
-        const playerPda = getPlayerPda(erPlayerAccount.account.authority);
-
-        // Check if this player exists in base layer
-        const basePlayer = playersMap.get(authority);
-
-        if (basePlayer && basePlayer.isDelegated) {
-          // Update with ER position for delegated players
-          playersMap.set(authority, {
-            ...basePlayer,
-            x: erPlayerAccount.account.x,
-            y: erPlayerAccount.account.y,
-          });
-        } else if (!basePlayer) {
-          // Player only exists on ER (not yet committed to base)
+        // Process ER players
+        for (const erPlayerAccount of erPlayers) {
+          const authority = erPlayerAccount.account.authority.toString();
           playersMap.set(authority, {
             x: erPlayerAccount.account.x,
             y: erPlayerAccount.account.y,
             authority,
             sessionKey: erPlayerAccount.account.sessionKey?.toString() || null,
             isDelegated: true,
+          });
+        }
+      } else {
+        // When not delegated, fetch from base layer
+        const baseProvider = new AnchorProvider(baseConnection.current, {} as any, {});
+        const baseProgram = getProgram(baseProvider);
+
+        const basePlayers = await (baseProgram.account as any).player.all();
+
+        // Process base layer players
+        for (const playerAccount of basePlayers) {
+          const authority = playerAccount.account.authority.toString();
+          const playerPda = getPlayerPda(playerAccount.account.authority);
+
+          // Check if delegated
+          const accountInfo = await baseConnection.current.getAccountInfo(playerPda);
+          const delegated = accountInfo?.owner.toString() !== baseProgram.programId.toString();
+
+          playersMap.set(authority, {
+            x: playerAccount.account.x,
+            y: playerAccount.account.y,
+            authority,
+            sessionKey: playerAccount.account.sessionKey?.toString() || null,
+            isDelegated: delegated,
           });
         }
       }
