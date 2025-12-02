@@ -1,0 +1,19 @@
+[toolchain]
+package_manager = "bun"
+
+[features]
+resolution = true
+skip-lint = false
+
+[programs.localnet]
+test_2 = "AqN6S5LJ4m1C5bQnr8996YFRu3jA1YnwaiG7eGEvD3oD"
+
+[registry]
+url = "https://api.apr.dev"
+
+[provider]
+cluster = "localnet"
+wallet = "~/.config/solana/id.json"
+
+[scripts]
+test = "bun run ts-mocha -p ./tsconfig.json -t 1000000 \"tests/**/*.ts\""
