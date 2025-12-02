@@ -26,6 +26,7 @@ export function GameBoard() {
   const [basePlayer, setBasePlayer] = useState<PlayerData | null>(null);
   const [erPlayer, setErPlayer] = useState<PlayerData | null>(null);
   const [isDelegated, setIsDelegated] = useState(false);
+  const [allPlayers, setAllPlayers] = useState<PlayerData[]>([]);
 
   const [loading, setLoading] = useState(false);
   const [boardInitialized, setBoardInitialized] = useState(false);
@@ -238,6 +239,7 @@ export function GameBoard() {
     });
 
     checkBoardInitialized();
+    fetchAllPlayers();
   }, []);
 
   // Handle player data fetching and subscriptions
@@ -256,6 +258,87 @@ export function GameBoard() {
       unsubscribeFromUpdates();
     };
   }, [connected, publicKey, fetchPlayerData, subscribeToPlayerUpdates, unsubscribeFromUpdates]);
+
+  // Refresh all players periodically
+  useEffect(() => {
+    if (boardInitialized) {
+      const interval = setInterval(fetchAllPlayers, 5000); // Refresh every 5 seconds
+      return () => clearInterval(interval);
+    }
+  }, [boardInitialized]);
+
+  async function fetchAllPlayers() {
+    if (!baseConnection.current || !erConnection.current) return;
+
+    try {
+      const baseProvider = new AnchorProvider(baseConnection.current, {} as any, {});
+      const baseProgram = getProgram(baseProvider);
+      const erProvider = new AnchorProvider(erConnection.current, {} as any, {});
+      const erProgram = getProgram(erProvider);
+
+      // Fetch all player accounts from base layer
+      const basePlayers = await (baseProgram.account as any).player.all();
+      
+      // Fetch all player accounts from ER
+      let erPlayers = [];
+      try {
+        erPlayers = await (erProgram.account as any).player.all();
+      } catch (e) {
+        console.log("Could not fetch ER players:", e);
+      }
+
+      const playersMap = new Map<string, PlayerData>();
+
+      // Process base layer players
+      for (const playerAccount of basePlayers) {
+        const authority = playerAccount.account.authority.toString();
+        const playerPda = getPlayerPda(playerAccount.account.authority);
+
+        // Check if delegated
+        const accountInfo = await baseConnection.current.getAccountInfo(playerPda);
+        const delegated = accountInfo?.owner.toString() !== baseProgram.programId.toString();
+
+        playersMap.set(authority, {
+          x: playerAccount.account.x,
+          y: playerAccount.account.y,
+          authority,
+          sessionKey: playerAccount.account.sessionKey?.toString() || null,
+          isDelegated: delegated,
+        });
+      }
+
+      // Process ER players (override with ER position if delegated)
+      for (const erPlayerAccount of erPlayers) {
+        const authority = erPlayerAccount.account.authority.toString();
+        const playerPda = getPlayerPda(erPlayerAccount.account.authority);
+        
+        // Check if this player exists in base layer
+        const basePlayer = playersMap.get(authority);
+        
+        if (basePlayer && basePlayer.isDelegated) {
+          // Update with ER position for delegated players
+          playersMap.set(authority, {
+            ...basePlayer,
+            x: erPlayerAccount.account.x,
+            y: erPlayerAccount.account.y,
+          });
+        } else if (!basePlayer) {
+          // Player only exists on ER (not yet committed to base)
+          playersMap.set(authority, {
+            x: erPlayerAccount.account.x,
+            y: erPlayerAccount.account.y,
+            authority,
+            sessionKey: erPlayerAccount.account.sessionKey?.toString() || null,
+            isDelegated: true,
+          });
+        }
+      }
+
+      setAllPlayers(Array.from(playersMap.values()));
+    } catch (error) {
+      console.error("Error fetching all players:", error);
+    }
+  }
 
   async function initializeBoard() {
     if (!wallet || !baseConnection.current) return;
@@ -685,6 +768,25 @@ export function GameBoard() {
 
           {/* Visual Grid Representation */}
           <div className="relative w-full aspect-square bg-muted rounded-lg overflow-hidden">
+            {/* All other players */}
+            {allPlayers.map((p) => {
+              // Skip the current player
+              if (publicKey && p.authority === publicKey.toString()) return null;
+
+              return (
+                <div
+                  key={p.authority}
+                  className="absolute w-3 h-3 bg-blue-500 rounded-full transition-all duration-300"
+                  style={{
+                    left: `${(p.x / (BOARD_SIZE - 1)) * 100}%`,
+                    top: `${(p.y / (BOARD_SIZE - 1)) * 100}%`,
+                    transform: "translate(-50%, -50%)",
+                  }}
+                  title={`${p.authority.slice(0, 4)}...${p.authority.slice(-4)}`}
+                />
+              );
+            })}
+
             {/* Base layer player (50% opacity if different from ER) */}
             {basePlayer && isDelegated && (basePlayer.x !== erPlayer?.x || basePlayer.y !== erPlayer?.y) && (
               <div
@@ -698,7 +800,7 @@ export function GameBoard() {
             )}
             {/* Current player position (ER if delegated, base otherwise) */}
             <div
-              className="absolute w-4 h-4 bg-primary rounded-full transition-all duration-300"
+              className="absolute w-4 h-4 bg-primary rounded-full transition-all duration-300 ring-2 ring-primary ring-offset-2 ring-offset-muted"
               style={{
                 left: `${(player.x / (BOARD_SIZE - 1)) * 100}%`,
                 top: `${(player.y / (BOARD_SIZE - 1)) * 100}%`,
@@ -785,6 +887,41 @@ export function GameBoard() {
               </Button>
             </div>
           </div>
+
+          {/* Players List */}
+          {allPlayers.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Players on Board ({allPlayers.length})</p>
+              <div className="max-h-48 overflow-y-auto space-y-1">
+                {allPlayers.map((p) => {
+                  const isCurrentPlayer = publicKey && p.authority === publicKey.toString();
+                  return (
+                    <div
+                      key={p.authority}
+                      className={`flex items-center justify-between p-2 rounded text-xs ${isCurrentPlayer ? "bg-primary/20 border border-primary/50" : "bg-muted"
+                        }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <div className={`w-2 h-2 rounded-full ${isCurrentPlayer ? "bg-primary" : "bg-blue-500"}`} />
+                        <code className="text-xs">
+                          {p.authority.slice(0, 4)}...{p.authority.slice(-4)}
+                          {isCurrentPlayer && " (You)"}
+                        </code>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-muted-foreground">
+                          ({p.x}, {p.y})
+                        </span>
+                        {p.isDelegated && (
+                          <span className="text-green-500 text-xs">⚡ ER</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
