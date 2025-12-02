@@ -180,6 +180,12 @@ export class SessionWallet implements AnchorWallet {
   }
 
   async signTransaction<T extends Transaction | VersionedTransaction>(tx: T): Promise<T> {
+    console.log("SessionWallet.signTransaction called:", {
+      isVersioned: tx instanceof VersionedTransaction,
+      sessionKeyPubkey: this.sessionKey.publicKey.toString(),
+      existingFeePayer: tx instanceof Transaction ? tx.feePayer?.toString() : "N/A",
+    });
+
     if (tx instanceof VersionedTransaction) {
       tx.sign([this.sessionKey]);
     } else {
@@ -187,6 +193,8 @@ export class SessionWallet implements AnchorWallet {
       tx.feePayer = this.sessionKey.publicKey;
       tx.partialSign(this.sessionKey);
     }
+
+    console.log("SessionWallet.signTransaction completed");
     return tx;
   }
 

@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from "react";
-import { useWallet, useAnchorWallet } from "@solana/wallet-adapter-react";
+import { useWallet, useAnchorWallet, useConnection } from "@solana/wallet-adapter-react";
 import { AnchorProvider } from "@coral-xyz/anchor";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { getProgram, getPlayerPda, getBoardPda, getConnection, ER_ENDPOINT, ER_WS, BOARD_SIZE, ER_VALIDATORS, getDelegationPda, getCommitStatePda, DELEGATION_PROGRAM_ID } from "@/lib/anchor";
@@ -433,6 +433,15 @@ export function GameBoard() {
     const activeWallet = (isRegistered && sessionWallet) ? sessionWallet : wallet;
     if (!activeWallet || !publicKey) return;
 
+    console.log("Moving player:", {
+      isRegistered,
+      hasSessionWallet: !!sessionWallet,
+      usingSessionWallet: activeWallet === sessionWallet,
+      activeWalletPubkey: activeWallet.publicKey.toString(),
+      mainWalletPubkey: publicKey.toString(),
+      isDelegated,
+    });
+
     setLoading(true);
     try {
       // Use ER connection if delegated, base connection otherwise
@@ -444,6 +453,11 @@ export function GameBoard() {
       });
       const program = getProgram(provider);
       const playerPda = getPlayerPda(publicKey);
+
+      console.log("Sending move transaction:", {
+        playerPda: playerPda.toString(),
+        signer: activeWallet.publicKey.toString(),
+      });
 
       const tx = await program.methods
         .movePlayer(xDir, yDir)
