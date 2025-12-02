@@ -278,7 +278,7 @@ export function GameBoard() {
 
       // Fetch all player accounts from base layer
       const basePlayers = await (baseProgram.account as any).player.all();
-      
+
       // Fetch all player accounts from ER
       let erPlayers = [];
       try {
@@ -311,10 +311,10 @@ export function GameBoard() {
       for (const erPlayerAccount of erPlayers) {
         const authority = erPlayerAccount.account.authority.toString();
         const playerPda = getPlayerPda(erPlayerAccount.account.authority);
-        
+
         // Check if this player exists in base layer
         const basePlayer = playersMap.get(authority);
-        
+
         if (basePlayer && basePlayer.isDelegated) {
           // Update with ER position for delegated players
           playersMap.set(authority, {
