@@ -144,13 +144,21 @@ export async function fundSessionKey(
     })
   );
 
-  const { blockhash } = await connection.getLatestBlockhash();
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
   transaction.recentBlockhash = blockhash;
   transaction.feePayer = wallet.publicKey;
 
   const signed = await wallet.signTransaction(transaction);
-  const signature = await connection.sendRawTransaction(signed.serialize());
-  await connection.confirmTransaction(signature, "confirmed");
+  const signature = await connection.sendRawTransaction(signed.serialize(), {
+    skipPreflight: false,
+    preflightCommitment: "confirmed",
+  });
+
+  await connection.confirmTransaction({
+    signature,
+    blockhash,
+    lastValidBlockHeight,
+  }, "confirmed");
 
   console.log(`Funded session key ${sessionKeyPubkey.toString()} with ${lamports} lamports`);
   return signature;

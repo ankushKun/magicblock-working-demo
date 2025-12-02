@@ -2,8 +2,8 @@ import { useEffect, useState } from "react";
 import { useWallet, useAnchorWallet } from "@solana/wallet-adapter-react";
 import { Keypair, PublicKey } from "@solana/web3.js";
 import { AnchorProvider } from "@coral-xyz/anchor";
-import { getProgram, getPlayerPda, getConnection } from "@/lib/anchor";
-import { getOrCreateSessionKey, clearSessionKey, SessionWallet, fundSessionKey } from "@/lib/sessionKey";
+import { getProgram, getPlayerPda, getConnection, getConnectionForAccount } from "@/lib/anchor";
+import { getOrCreateSessionKey, clearSessionKey, SessionWallet, fundSessionKey, hasSessionKey } from "@/lib/sessionKey";
 import { toast } from "sonner";
 
 export function useSessionKey() {
@@ -13,15 +13,64 @@ export function useSessionKey() {
   const [sessionWallet, setSessionWallet] = useState<SessionWallet | null>(null);
   const [isRegistered, setIsRegistered] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [isDelegated, setIsDelegated] = useState(false);
 
-  // Check if session key is registered on-chain
+  // Restore session key from cache on mount
+  useEffect(() => {
+    restoreSessionKey();
+  }, [connected, publicKey, wallet]);
+
+  // Check if session key is registered on-chain and delegation status
   useEffect(() => {
     checkRegistration();
   }, [connected, publicKey]);
 
+  async function restoreSessionKey() {
+    if (!wallet || !publicKey) {
+      setSessionKey(null);
+      setSessionWallet(null);
+      return;
+    }
+
+    try {
+      // Check if we have a cached session key
+      if (hasSessionKey(publicKey)) {
+        const connection = getConnection();
+        const key = await getOrCreateSessionKey(wallet, publicKey, connection);
+        setSessionKey(key);
+
+        const sessWallet = new SessionWallet(wallet, key);
+        setSessionWallet(sessWallet);
+
+        console.log("Session key restored from cache:", key.publicKey.toString());
+      }
+    } catch (error) {
+      console.error("Error restoring session key:", error);
+    }
+  }
+
+  async function getCurrentDelegationStatus(): Promise<boolean> {
+    if (!wallet || !publicKey) return false;
+
+    try {
+      const connection = getConnection();
+      const provider = new AnchorProvider(connection, wallet, {});
+      const program = getProgram(provider);
+      const playerPda = getPlayerPda(publicKey);
+
+      const accountInfo = await connection.getAccountInfo(playerPda);
+      if (!accountInfo) return false;
+
+      return accountInfo.owner.toString() !== program.programId.toString();
+    } catch (error) {
+      return false;
+    }
+  }
+
   async function checkRegistration() {
     if (!wallet || !publicKey) {
       setIsRegistered(false);
+      setIsDelegated(false);
       return;
     }
 
@@ -31,10 +80,21 @@ export function useSessionKey() {
       const program = getProgram(provider);
       const playerPda = getPlayerPda(publicKey);
 
-      const player = await (program.account as any).player.fetch(playerPda);
+      // Check delegation status first
+      const accountInfo = await connection.getAccountInfo(playerPda);
+      const delegated = accountInfo?.owner.toString() !== program.programId.toString();
+      setIsDelegated(delegated);
+
+      // Fetch from correct connection based on delegation
+      const correctConnection = getConnectionForAccount(delegated);
+      const correctProvider = new AnchorProvider(correctConnection, wallet, {});
+      const correctProgram = getProgram(correctProvider);
+
+      const player = await (correctProgram.account as any).player.fetch(playerPda);
       setIsRegistered(player.sessionKey !== null);
     } catch (error) {
       setIsRegistered(false);
+      setIsDelegated(false);
     }
   }
 
@@ -86,37 +146,63 @@ export function useSessionKey() {
         if (!key) return false;
       }
 
-      const connection = getConnection();
+      // Get live delegation status
+      const currentlyDelegated = await getCurrentDelegationStatus();
+
+      // Use appropriate connection based on LIVE delegation status
+      const connection = getConnectionForAccount(currentlyDelegated);
       const provider = new AnchorProvider(connection, wallet, {});
       const program = getProgram(provider);
 
-      // Step 1: Register session key on-chain
+      // Register session key on-chain
       const tx = await program.methods
         .registerSessionKey(key.publicKey)
         .rpc();
 
-      toast.success("Session key registered!", {
+      const location = currentlyDelegated ? " on ER" : " on base layer";
+      toast.success("Session key registered" + location + "!", {
         description: `Transaction: ${tx}`,
       });
 
-      // Step 2: Fund session key with lamports so it can pay fees
-      try {
-        const fundTx = await fundSessionKey(wallet, key.publicKey, connection);
-        toast.success("Session key funded!", {
-          description: `Transferred 0.01 SOL for transaction fees`,
-        });
-      } catch (fundError: any) {
-        console.error("Error funding session key:", fundError);
-        toast.warning("Session key registered but not funded", {
-          description: "You may need to fund it manually to use it",
-        });
-      }
-
       setIsRegistered(true);
+      setIsDelegated(currentlyDelegated);
       return true;
     } catch (error: any) {
       console.error("Error registering session key:", error);
       toast.error("Failed to register session key", {
+        description: error.message || "Unknown error",
+      });
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function fundSessionKeyWallet() {
+    if (!wallet || !publicKey) {
+      toast.error("Wallet not connected");
+      return false;
+    }
+
+    setLoading(true);
+    try {
+      let key = sessionKey;
+      if (!key) {
+        toast.error("No session key found");
+        return false;
+      }
+
+      // Always use base layer connection for funding since that's where wallet SOL is
+      const baseConnection = getConnection();
+      const fundTx = await fundSessionKey(wallet, key.publicKey, baseConnection);
+      toast.success("Session key funded!", {
+        description: `Transferred 0.01 SOL for transaction fees`,
+      });
+
+      return true;
+    } catch (error: any) {
+      console.error("Error funding session key:", error);
+      toast.error("Failed to fund session key", {
         description: error.message || "Unknown error",
       });
       return false;
@@ -133,13 +219,18 @@ export function useSessionKey() {
 
     setLoading(true);
     try {
-      const connection = getConnection();
+      // Get live delegation status
+      const currentlyDelegated = await getCurrentDelegationStatus();
+
+      // Use appropriate connection based on LIVE delegation status
+      const connection = getConnectionForAccount(currentlyDelegated);
       const provider = new AnchorProvider(connection, wallet, {});
       const program = getProgram(provider);
 
       const tx = await program.methods.revokeSessionKey().rpc();
 
-      toast.success("Session key revoked", {
+      const location = currentlyDelegated ? " on ER" : " on base layer";
+      toast.success("Session key revoked" + location, {
         description: `Transaction: ${tx}`,
       });
 
@@ -168,6 +259,17 @@ export function useSessionKey() {
     }
   }
 
+  // Function to clear session when undelegating (called from GameBoard)
+  function clearSessionOnUndelegate() {
+    if (publicKey) {
+      clearSessionKey(publicKey);
+      setSessionKey(null);
+      setSessionWallet(null);
+      setIsRegistered(false);
+      console.log("Session key cleared due to undelegation");
+    }
+  }
+
   return {
     sessionKey,
     sessionWallet,
@@ -175,7 +277,9 @@ export function useSessionKey() {
     loading,
     createSessionKey,
     registerSessionKey,
+    fundSessionKey: fundSessionKeyWallet,
     revokeSessionKey,
     initializeSession,
+    clearSessionOnUndelegate,
   };
 }
